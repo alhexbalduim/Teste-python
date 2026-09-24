@@ -1,0 +1,116 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import scipy.stats as stats
+import plotly.express as px
+import plotly.graph_objects as go
+
+st.set_page_config(page_title="Analisador Estatístico", layout="wide")
+
+st.title("📊 Analisador Estatístico Completo")
+st.write("Faça o upload do seu arquivo Excel ou CSV para calcular todas as estatísticas possíveis da sua coluna de dados.")
+
+uploaded_file = st.sidebar.file_uploader("Envie seu arquivo (XLSX ou CSV)", type=["xlsx", "xls", "csv"])
+
+if uploaded_file is not None:
+    # Leitura do arquivo
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+            
+        st.success("Arquivo carregado com sucesso!")
+        
+        # Seleção da coluna
+        numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+        
+        if not numeric_columns:
+            st.error("Nenhuma coluna numérica foi encontrada no arquivo.")
+        else:
+            selected_col = st.sidebar.selectbox("Selecione a coluna para análise:", numeric_columns)
+            
+            # Limpeza dos dados (remover NaNs)
+            data = df[selected_col].dropna()
+            n = len(data)
+            
+            if n < 2:
+                st.warning("A coluna selecionada precisa ter pelo menos 2 valores numéricos válidos.")
+            else:
+                # --- CÁLCULOS ESTATÍSTICOS ---
+                mean = np.mean(data)
+                std_err = stats.sem(data)
+                
+                # Intervalo de Confiança de 95% (Distribuição t de Student)
+                ci_95 = stats.t.interval(0.95, df=n-1, loc=mean, scale=std_err)
+                
+                # Outras métricas
+                median = np.median(data)
+                mode_res = stats.mode(data, keepdims=True)
+                mode_val = mode_res.mode[0] if len(mode_res.mode) > 0 else np.nan
+                std_dev = np.std(data, ddof=1)
+                variance = np.var(data, ddof=1)
+                q25, q75 = np.percentile(data, [25, 75])
+                iqr = q75 - q25
+                skewness = stats.skew(data)
+                kurtosis = stats.kurtosis(data)
+                
+                # --- EXIBIÇÃO EM DESTAQUE: INTERVALO DE CONFIANÇA ---
+                st.subheader("🎯 Intervalo de Confiança de 95% para a Média")
+                col_ic1, col_ic2, col_ic3 = st.columns(3)
+                col_ic1.metric("Limite Inferior (95%)", f"{ci_95[0]:.4f}")
+                col_ic2.metric("Média Amostral", f"{mean:.4f}")
+                col_ic3.metric("Limite Superior (95%)", f"{ci_95[1]:.4f}")
+                
+                st.info(f"Com 95% de confiança, a verdadeira média da população está contida no intervalo entre **{ci_95[0]:.4f}** e **{ci_95[1]:.4f}**.")
+                
+                st.markdown("---")
+                
+                # --- PAINEL DE MÉTRICAS ---
+                st.subheader("📈 Resumo Estatístico")
+                
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Total de Observações (N)", n)
+                c2.metric("Média", f"{mean:.4f}")
+                c3.metric("Mediana", f"{median:.4f}")
+                c4.metric("Moda", f"{mode_val:.4f}")
+                
+                c5, c6, c7, c8 = st.columns(4)
+                c5.metric("Desvio Padrão", f"{std_dev:.4f}")
+                c6.metric("Variância", f"{variance:.4f}")
+                c7.metric("Erro Padrão da Média", f"{std_err:.4f}")
+                c8.metric("Amplitude Interquartil (IQR)", f"{iqr:.4f}")
+                
+                c9, c10, c11, c12 = st.columns(4)
+                c9.metric("Valor Mínimo", f"{np.min(data):.4f}")
+                c10.metric("1º Quartil (25%)", f"{q25:.4f}")
+                c11.metric("3º Quartil (75%)", f"{q75:.4f}")
+                c12.metric("Valor Máximo", f"{np.max(data):.4f}")
+                
+                c13, c14 = st.columns(2)
+                c13.metric("Assimetria (Skewness)", f"{skewness:.4f}")
+                c14.metric("Curtose (Kurtosis)", f"{kurtosis:.4f}")
+                
+                st.markdown("---")
+                
+                # --- VISUALIZAÇÃO GRÁFICA ---
+                st.subheader("📊 Visualização dos Dados")
+                
+                tab1, tab2 = st.tabs(["Histograma com IC 95%", "Boxplot"])
+                
+                with tab1:
+                    fig_hist = px.histogram(data, x=selected_col, nbins=30, title="Distribuição dos Dados", marginal="rug")
+                    # Adicionar linhas verticais para o IC 95% e a Média
+                    fig_hist.add_vline(x=mean, line_dash="solid", line_color="red", annotation_text="Média")
+                    fig_hist.add_vline(x=ci_95[0], line_dash="dash", line_color="green", annotation_text="IC 95% Inf")
+                    fig_hist.add_vline(x=ci_95[1], line_dash="dash", line_color="green", annotation_text="IC 95% Sup")
+                    st.plotly_chart(fig_hist, use_container_width=True)
+                    
+                with tab2:
+                    fig_box = px.box(df, y=selected_col, points="all", title="Boxplot com Detecção de Outliers")
+                    st.plotly_chart(fig_box, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Erro ao processar o arquivo: {e}")
+else:
+    st.info("Aguardando o envio do arquivo na barra lateral à esquerda.")
